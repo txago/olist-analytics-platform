@@ -1,0 +1,6 @@
+customer_segment,customer_count,total_revenue,avg_customer_value,avg_orders_per_customer,avg_recency_days,avg_review_score,avg_clv_12m
+Loyal Customers,19295,"R$ 8,203,307.40",R$ 425.15,1,240,4.04,"R$ 5,101.82"
+Recent Customers,23716,"R$ 3,163,713.08",R$ 133.40,1,135,4.13,"R$ 1,600.80"
+Potential Loyalists,14875,"R$ 1,967,451.50",R$ 132.27,1,395,4.17,"R$ 1,587.19"
+Promising,23735,"R$ 1,290,168.46",R$ 54.36,1,340,4.2,R$ 652.29
+Customers Needing Attention,14857,"R$ 797,964.79",R$ 53.71,1,91,4.26,R$ 644.52
