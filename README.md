@@ -46,38 +46,13 @@ A comprehensive data analytics platform built on **Databricks** that transforms 
 ## 🏗️ Architecture
 
 ```mermaid
-graph TD
-    A["🗂️ DATA SOURCE: Brazilian E-Commerce Public Dataset by Olist (Kaggle)<br>100K Orders | 9 CSV Files"] --> HEADING["Databricks Medallion Architecture"]
-
-    subgraph Databricks[ ]
-       
-        HEADING --> B["🥉 BRONZE LAYER<br>Raw CSV<br>9 Tables | Delta | Governed"]
-        B --> C["🥈 SILVER LAYER<br>Cleaned + Validated<br>5 Tables | Joined | Enriched"]
-        C --> D["🥇 GOLD LAYER<br>Business Metrics<br>8 Tables | RFM | CLV | ML Scores"]
-    end
-
-    D --> E[ML MODELS<br>Segmentation<br>Churn Prediction]
-    D --> F[SQL Queries<br>8 Reports]
-    D --> G[POWER BI<br>Dashboards<br>4 Pages]
-
-    classDef source fill:#e1f5fe,stroke:#01579b,stroke-width:2px
-    classDef bronze fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
-    classDef silver fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
-    classDef gold fill:#fff3e0,stroke:#e65100,stroke-width:2px
-    classDef output fill:#fce4ec,stroke:#880e4f,stroke-width:2px
-    classDef heading fill:#f5f5f5,stroke:#333,stroke-width:2px
-    
-    class A source
-    class B bronze
-    class C silver
-    class D gold
-    class E,F,G output
-    class HEADING heading
-    
-    linkStyle 0 stroke:#01579b,stroke-width:2px,fill:none
-    linkStyle 1 stroke:#4a148c,stroke-width:2px,fill:none
-    linkStyle 2 stroke:#1b5e20,stroke-width:2px,fill:none
-    linkStyle 3,4,5 stroke:#e65100,stroke-width:2px,fill:none
+flowchart TD
+    A["🗂️ DATA SOURCE<br><strong>Brazilian E-Commerce Public Dataset by Olist (Kaggle)</strong><br>9 CSV files | 100K orders | 2016-2018"] -->|Databricks Medallion Architecture| B["🥉 BRONZE LAYER<br><strong>Raw Data</strong><br>9 Tables | Delta | Governed"]
+    B --> C["🥈 SILVER LAYER<br><strong>Cleaned + Validated</strong><br>5 Tables | Joined | Enriched"]
+    C --> D["🥇 GOLD LAYER<br><strong>Business Metrics</strong><br>8 Tables | RFM | CLV | ML Scores"]
+    D --> E["🤖 ML MODELS<br>Segmentation | Churn Prediction"]
+    D --> F["🔍 SQL QUERIES<br>8 reports"]
+    D --> G["📊 POWER BI<br>Dashboard | 4 pages"]
 ```
 
 **Technology Stack:**

@@ -30,12 +30,12 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    A["🗂️ DATA SOURCE<br><strong>Olist (Kaggle)</strong><br>9 CSV files | 100K orders | 2016-2018"] -->|Upload to Unity Catalog Volume| B["🥉 BRONZE LAYER<br><strong>Raw Ingestion</strong><br><small>Read CSV → Delta Lake | No transformations | Add ingestion_timestamp | ALL data types as STRING | Duration: ~2 minutes | Output: 9 bronze_* tables</small>"]
-    B -->|Filter, Join, Cast, Enrich| C["🥈 SILVER LAYER (Clean)<br><strong>Cleaned & Validated</strong><br><small>Filter delivered orders only | Type casting (string → timestamp, decimal) | Join tables (orders + customers + payments + reviews) | Deduplication | Feature engineering (delivery_days, delays) | Add English translations | Duration: ~3 minutes | Output: 5 silver_* tables + 1 master table</small>"]
-    C -->|Aggregate, Calculate Metrics| D["🥇 GOLD LAYER (Aggregate)<br><strong>Business Metrics</strong><br><small>Customer-level aggregations (RFM, CLV) | Product performance metrics | Geographic analysis | Time-series trends | ML feature preparation | Duration: ~2 minutes | Output: 8 gold_* tables</small>"]
-    D --> E["🤖 ML MODELS<br>K Means | RF"]
-    D --> F["🔍 SQL QUERIES<br>8 queries"]
-    D --> G["📊 DASHBOARDS<br>Databricks | Power BI"]
+    A["🗂️ DATA SOURCE<br><strong>Olist (Kaggle)</strong><br>[ 9 CSV files | 100K orders | 2016-2018 ]"] -->|Upload to Unity Catalog Volume| B["🥉 BRONZE LAYER<br><strong>Raw Ingestion</strong><br><small>[ Read CSV → Delta Lake | No transformations | Add ingestion_timestamp | ALL data types as STRING | Duration: ~2 minutes | Output: 9 bronze_* tables ]</small>"]
+    B -->|Filter, Join, Cast, Enrich| C["🥈 SILVER LAYER (Clean)<br><strong>Cleaned & Validated</strong><br><small>[ Filter delivered orders only | Type casting (string → timestamp, decimal) | Join tables (orders + customers + payments + reviews) | Deduplication | Feature engineering (delivery_days, delays) | Add English translations | Duration: ~3 minutes | Output: 5 silver_* tables + 1 master table ]</small>"]
+    C -->|Aggregate, Calculate Metrics| D["🥇 GOLD LAYER (Aggregate)<br><strong>Business Metrics</strong><br><small>[ Customer-level aggregations (RFM, CLV) | Product performance metrics | Geographic analysis | Time-series trends | ML feature preparation | Duration: ~2 minutes | Output: 8 gold_* tables ]</small>"]
+    D --> E["🤖 ML MODELS<br>[ K Means | RF ]"]
+    D --> F["🔍 SQL QUERIES<br>[ 8 queries ]"]
+    D --> G["📊 DASHBOARDS<br>[ Databricks | Power BI ]"]
 ```
 
 ---
