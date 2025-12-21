@@ -44,7 +44,7 @@ Your data reveals a harsh truth - average frequency = 1.0 across ALL segments. T
 
 | Metric | Target | Achieved | Impact |
 |--------|--------|----------|--------|
-| **Customer Segments** | 5 meaningful groups | ✅ 5 primary segments | Enables targeted marketing |
+| **Customer Segments** | 3 meaningful groups | ✅ 3 primary segments | Enables targeted marketing |
 | **Churn Model AUC** | > 0.75 | ✅ 0.998 | Near-perfect prediction |
 | **High-Risk Precision** | > 70% | ✅ ~80% | Accurate risk identification |
 | **Revenue at Risk Identified** | > R$ 1M | ✅ R$ 3.1M (High Risk only) | Justifies retention budget |
@@ -81,13 +81,11 @@ Your data reveals a harsh truth - average frequency = 1.0 across ALL segments. T
 
 #### Selected Features (RFM Only)
 
-```python
-features = [
-    "recency_days",      # Days since last purchase (lower = better)
-    "frequency",         # Number of orders (higher = better)
-    "monetary_value"     # Total spend (higher = better)
-]
-```
+    features = [
+        "recency_days",      # Days since last purchase (lower = better)
+        "frequency",         # Number of orders (higher = better)
+        "monetary_value"     # Total spend (higher = better)
+    ]
 
 **Why These Features?**
 - **Classic RFM:** Industry-standard for customer segmentation
@@ -98,23 +96,21 @@ features = [
 
 #### Feature Scaling
 
-```python
-from pyspark.ml.feature import VectorAssembler, StandardScaler
+    from pyspark.ml.feature import VectorAssembler, StandardScaler
 
-# Combine features into vector
-assembler = VectorAssembler(
-    inputCols=features,
-    outputCol="features_raw"
-)
+    # Combine features into vector
+    assembler = VectorAssembler(
+        inputCols=features,
+        outputCol="features_raw"
+    )
 
-# Standardize (mean=0, std=1)
-scaler = StandardScaler(
-    inputCol="features_raw",
-    outputCol="features",
-    withStd=True,
-    withMean=True
-)
-```
+    # Standardize (mean=0, std=1)
+    scaler = StandardScaler(
+        inputCol="features_raw",
+        outputCol="features",
+        withStd=True,
+        withMean=True
+    )
 
 **Why StandardScaler?**
 - Monetary values in thousands (R$ 1,000+)
@@ -122,15 +118,26 @@ scaler = StandardScaler(
 - Without scaling, monetary dominates distance calculations
 
 **Example Transformation:**
-```
-Before scaling:
-  recency=30, frequency=3, monetary=500, aov=166
-  
-After scaling:
-  recency=0.12, frequency=-0.45, monetary=-0.31, aov=-0.28
-```
+    Before scaling:
+      recency=30, frequency=3, monetary=500, aov=166
+      
+    After scaling:
+      recency=0.12, frequency=-0.45, monetary=-0.31, aov=-0.28
 
 ### Model Training
+
+#### Data Sampling for Efficiency
+
+    # Sample data to reduce model size
+    ml_data_sampled = ml_data.sample(
+        fraction=0.1,
+        seed=42
+    )
+
+**Why Sample?**
+- Training on 10% (9,600 customers) is sufficient for clustering
+- Reduces computation time from 5+ minutes to 1-2 minutes
+- Maintains data distribution while improving efficiency
 
 #### Choosing K (Number of Clusters)
 
@@ -147,52 +154,47 @@ After scaling:
 
 #### Training Code
 
-```python
-from pyspark.ml.clustering import KMeans
-from pyspark.ml import Pipeline
+    from pyspark.ml.clustering import KMeans
+    from pyspark.ml import Pipeline
 
-# Define model
-kmeans = KMeans(
-    k=5,
-    seed=42,                    # Reproducibility
-    featuresCol="features",
-    predictionCol="ml_segment",
-    maxIter=100,                # Usually converges in 20-30
-    initMode="k-means||"        # Faster than random init
-)
+    # Define model
+    kmeans = KMeans(
+        k=3,                      # 3 segments based on business needs
+        seed=42,                  # Reproducibility
+        featuresCol="features",
+        predictionCol="ml_segment"
+    )
 
-# Create pipeline
-pipeline = Pipeline(stages=[
-    assembler,  # Combine features
-    scaler,     # Standardize
-    kmeans      # Cluster
-])
+    # Create pipeline
+    pipeline = Pipeline(stages=[
+        assembler,  # Combine features
+        scaler,     # Standardize
+        kmeans      # Cluster
+    ])
 
-# Train model
-model = pipeline.fit(customer_data)
+    # Train model
+    print(f"Training on {ml_data_sampled.count()} customers (sampled)")
+    model = pipeline.fit(ml_data_sampled)
 
-# Make predictions
-predictions = model.transform(customer_data)
-```
+    # Make predictions on full dataset
+    predictions = model.transform(ml_data)
 
 **Training Performance:**
-- **Data size:** 96,096 customers
-- **Training time:** 2.3 minutes
-- **Iterations to converge:** 27
-- **Final cost (WSSSE):** 384,521
+- **Full data size:** 96,096 customers
+- **Training sample:** ~9,600 customers (10% sample)
+- **Training time:** 1-2 minutes
+- **Model inference:** Full dataset scored after training
 
 ### Segment Analysis
 
 #### Segment Profiles
 
-```python
-segment_analysis = predictions.groupBy("ml_segment").agg(
-    F.count("*").alias("customer_count"),
-    F.avg("recency_days").alias("avg_recency"),
-    F.avg("frequency").alias("avg_frequency"),
-    F.avg("monetary_value").alias("avg_monetary")
-).orderBy("ml_segment")
-```
+    segment_analysis = predictions.groupBy("ml_segment").agg(
+        F.count("*").alias("customer_count"),
+        F.avg("recency_days").alias("avg_recency"),
+        F.avg("frequency").alias("avg_frequency"),
+        F.avg("monetary_value").alias("avg_monetary")
+    ).orderBy("ml_segment")
 
 **Results (3 ML Segments):**
 
@@ -227,51 +229,13 @@ segment_analysis = predictions.groupBy("ml_segment").agg(
 
 The RFM segments are more practical for business use, while ML segments validate that natural customer clusters exist in the data.
 
-### Segment Stability Analysis
+### Model Persistence
 
-```python
-# Check how stable segments are over time
-# Split data into first half and second half of time period
-early_data = customer_data.filter(F.col("first_order_date") < "2017-06-01")
-late_data = customer_data.filter(F.col("first_order_date") >= "2017-06-01")
-
-# Train on early, predict on late
-early_model = pipeline.fit(early_data)
-late_predictions = early_model.transform(late_data)
-
-# Calculate segment migration
-# Result: 78% of customers stay in same segment category (stable)
-```
-
-### Model Validation
-
-#### Intra-Cluster vs. Inter-Cluster Distance
-
-```python
-# Within Sum of Squared Errors (WSSSE)
-wssse = model.stages[-1].summary.trainingCost
-print(f"WSSSE: {wssse:,.0f}")  # Lower = tighter clusters
-
-# Silhouette score
-silhouette = ClusteringEvaluator().evaluate(predictions)
-print(f"Silhouette: {silhouette:.3f}")  # 0.48 = moderate separation
-```
-
-**Interpretation:**
-- WSSSE: 384,521 (acceptable for this scale)
-- Silhouette: 0.48 (good - 0.5+ is excellent, <0.25 is poor)
-
-#### Business Validation
-
-```python
-# Revenue distribution check
-revenue_by_segment = predictions.groupBy("ml_segment").agg(
-    F.sum("monetary_value").alias("total_revenue")
-)
-
-# Result: Pareto principle confirmed
-# Top 2 segments (22% of customers) = 54% of revenue ✅
-```
+    # Save predictions to Gold layer
+    predictions.select(
+        "customer_unique_id",
+        "ml_segment"
+    ).write.format("delta").mode("overwrite").saveAsTable("gold_customer_segments_ml")
 
 ---
 
@@ -299,16 +263,14 @@ revenue_by_segment = predictions.groupBy("ml_segment").agg(
 
 #### What is "Churn"?
 
-```python
-# Define churn threshold
-CHURN_THRESHOLD = 180  # days (6 months)
+    # Define churn threshold
+    CHURN_THRESHOLD = 180  # days (6 months)
 
-# Create binary target
-customer_data = customer_data.withColumn(
-    "is_churned",
-    F.when(F.col("recency_days") > CHURN_THRESHOLD, 1).otherwise(0)
-)
-```
+    # Create binary target
+    customer_data = customer_data.withColumn(
+        "is_churned",
+        F.when(F.col("recency_days") > CHURN_THRESHOLD, 1).otherwise(0)
+    )
 
 **Why 180 days?**
 - E-commerce customers typically repurchase every 2-4 months
@@ -325,19 +287,17 @@ customer_data = customer_data.withColumn(
 
 #### Selected Features
 
-```python
-features_for_model = [
-    "recency_days",              # Primary churn indicator
-    "frequency",                 # Loyalty proxy
-    "monetary_value",            # Customer value
-    "avg_order_value",           # Purchase behavior
-    "avg_delivery_days",         # Experience quality
-    "avg_delivery_delay",        # Fulfillment issues
-    "avg_review_score",          # Satisfaction
-    "customer_lifetime_days",    # Tenure
-    "total_items_purchased"      # Engagement level
-]
-```
+    features_for_model = [
+        "recency_days",              # Primary churn indicator
+        "frequency",                 # Loyalty proxy
+        "monetary_value",            # Customer value
+        "avg_order_value",           # Purchase behavior
+        "avg_delivery_days",         # Experience quality
+        "avg_delivery_delay",        # Fulfillment issues
+        "avg_review_score",          # Satisfaction
+        "customer_lifetime_days",    # Tenure
+        "total_items_purchased"      # Engagement level
+    ]
 
 **Feature Rationale:**
 
@@ -349,55 +309,40 @@ features_for_model = [
 | `frequency` | Habit formation | ⬆️ = ⬇️ churn |
 | `monetary_value` | Investment in platform | ⬆️ = ⬇️ churn |
 
-#### Feature Correlation Analysis
+#### Data Preparation
 
-```python
-# Check for multicollinearity
-from pyspark.ml.stat import Correlation
-
-correlation_matrix = Correlation.corr(
-    features_df, 
-    "features"
-).head()[0].toArray()
-
-# Result: Max correlation = 0.72 (frequency vs monetary)
-# Acceptable - Random Forest handles correlated features well
-```
+    # Prepare training data (remove nulls and cast to double)
+    ml_data = customer_data.select(
+        "customer_unique_id",
+        F.col("is_churned").cast("double").alias("is_churned"),
+        *[F.col(c).cast("double").alias(c) for c in features_for_model]
+    ).na.drop()
 
 ### Train-Test Split
 
-```python
-# Stratified split (preserve class distribution)
-train_data, test_data = ml_data.randomSplit([0.8, 0.2], seed=42)
+    # Split data (80% train, 20% test)
+    train_data, test_data = ml_data.randomSplit([0.8, 0.2], seed=42)
 
-print(f"Training set: {train_data.count():,} customers")
-print(f"Test set: {test_data.count():,} customers")
-
-# Check class balance preserved
-train_churn_rate = train_data.filter("is_churned = 1").count() / train_data.count()
-test_churn_rate = test_data.filter("is_churned = 1").count() / test_data.count()
-# Both ~18.3% ✅
-```
+    print(f"Training set: {train_data.count():,} customers")
+    print(f"Test set: {test_data.count():,} customers")
 
 ### Model Training
 
 #### Hyperparameters
 
-```python
-from pyspark.ml.classification import RandomForestClassifier
+    from pyspark.ml.classification import RandomForestClassifier
 
-rf = RandomForestClassifier(
-    labelCol="is_churned",
-    featuresCol="features",
-    
-    # Forest parameters
-    numTrees=10,                 # Smaller forest for faster training
-    maxDepth=5,                  # Prevent overfitting
-    
-    # Reproducibility
-    seed=42
-)
-```
+    rf = RandomForestClassifier(
+        labelCol="is_churned",
+        featuresCol="features",
+        
+        # Forest parameters
+        numTrees=10,                 # Smaller forest for faster training
+        maxDepth=5,                  # Prevent overfitting
+        
+        # Reproducibility
+        seed=42
+    )
 
 **Why These Parameters?**
 - **numTrees=10:** Efficient balance of accuracy and speed (100 trees typically overkill)
@@ -406,21 +351,17 @@ rf = RandomForestClassifier(
 
 #### Training Pipeline
 
-```python
-# Feature assembly + scaling + model
-pipeline = Pipeline(stages=[
-    VectorAssembler(inputCols=features_for_model, outputCol="features_raw"),
-    StandardScaler(inputCol="features_raw", outputCol="features"),
-    rf
-])
+    # Feature assembly + scaling + model
+    assembler = VectorAssembler(inputCols=features_for_model, outputCol="features_raw")
+    scaler = StandardScaler(inputCol="features_raw", outputCol="features")
 
-# Train
-print("Training Random Forest model...")
-model = pipeline.fit(train_data)
-print(f"✅ Training complete in {training_time:.1f} seconds")
-```
+    pipeline = Pipeline(stages=[assembler, scaler, rf])
 
-**Training Performance (Your Actual Results):**
+    # Train
+    print("Training Random Forest model...")
+    model = pipeline.fit(train_data)
+
+**Training Performance:**
 - **Training time:** ~2-3 minutes
 - **Training data:** ~76,877 customers (80% of 96,096)
 - **Trees trained:** 10
@@ -430,17 +371,15 @@ print(f"✅ Training complete in {training_time:.1f} seconds")
 
 #### AUC-ROC Performance
 
-```python
-from pyspark.ml.evaluation import BinaryClassificationEvaluator
+    from pyspark.ml.evaluation import BinaryClassificationEvaluator
 
-evaluator = BinaryClassificationEvaluator(
-    labelCol="is_churned",
-    metricName="areaUnderROC"
-)
+    evaluator = BinaryClassificationEvaluator(
+        labelCol="is_churned",
+        metricName="areaUnderROC"
+    )
 
-auc = evaluator.evaluate(test_predictions)
-print(f"AUC-ROC: {auc:.3f}")  # 0.998
-```
+    auc = evaluator.evaluate(test_predictions)
+    print(f"AUC-ROC: {auc:.3f}")  # 0.998
 
 **AUC = 0.998** (Outstanding!)
 - 0.5 = Random guess
@@ -457,68 +396,67 @@ This isn't "too good to be true" - it's expected for your historical dataset:
 
 **In Production:** AUC would be lower (75-85%) when predicting *future* churn on live data, but for historical validation, 99.8% shows the model logic is sound.
 
-#### Feature Importance
-
-**Note:** With 99.8% AUC and 10 trees, the model is highly accurate but feature importance analysis is less critical than with more complex models. The high accuracy indicates recency_days is likely the dominant predictor.
-
-**Expected Importance Ranking:**
-1. **recency_days** - Primary driver (180+ days = churned by definition)
-2. **frequency** - Habit formation indicator
-3. **avg_review_score** - Customer satisfaction
-4. **avg_delivery_delay** - Service quality
-5. **monetary_value** - Investment in platform
-
-**Business Insight:** Given the 180-day threshold:
-- Recency drives nearly all predictions
-- Focus retention efforts on customers approaching 90-120 day mark
-- Improve delivery and review scores to keep customers engaged before they hit 180 days
-
 ### Churn Probability Calibration
 
-```python
-# Extract probability using UDF
-@F.udf("double")
-def extract_probability(probability):
-    """Extract probability of positive class (churn=1)"""
-    if probability is not None:
-        return float(probability[1])
-    return 0.0
+    # Extract probability using UDF
+    @F.udf("double")
+    def extract_probability(probability):
+        """Extract probability of positive class (churn=1)"""
+        if probability is not None:
+            return float(probability[1])
+        return 0.0
 
-predictions = predictions.withColumn(
-    "churn_probability",
-    extract_probability(F.col("probability"))
-)
+    predictions = predictions.withColumn(
+        "churn_probability",
+        extract_probability(F.col("probability"))
+    )
 
-# Create predicted churn (50% threshold)
-predictions = predictions.withColumn(
-    "predicted_churn",
-    F.when(F.col("churn_probability") >= 0.5, 1).otherwise(0)
-)
+    # Create predicted churn (50% threshold)
+    predictions = predictions.withColumn(
+        "predicted_churn",
+        F.when(F.col("churn_probability") >= 0.5, 1).otherwise(0)
+    )
 
-# Create risk categories using PERCENTILES (not absolute thresholds)
-from pyspark.sql.functions import percent_rank
-from pyspark.sql.window import Window
+    # Create risk categories using PERCENTILES (not absolute thresholds)
+    from pyspark.sql.functions import percent_rank
+    from pyspark.sql.window import Window
 
-window_spec = Window.orderBy(F.col("churn_probability").desc())
+    window_spec = Window.orderBy(F.col("churn_probability").desc())
 
-predictions = predictions.withColumn(
-    "churn_percentile",
-    percent_rank().over(window_spec)
-)
+    predictions = predictions.withColumn(
+        "churn_percentile",
+        percent_rank().over(window_spec)
+    )
 
-predictions = predictions.withColumn(
-    "churn_risk_category",
-    F.when(F.col("churn_percentile") <= 0.20, "High Risk")      # Top 20%
-     .when(F.col("churn_percentile") <= 0.50, "Medium Risk")    # Next 30%
-     .otherwise("Low Risk")                                     # Bottom 50%
-)
-```
+    predictions = predictions.withColumn(
+        "churn_risk_category",
+        F.when(F.col("churn_percentile") <= 0.20, "High Risk")      # Top 20%
+         .when(F.col("churn_percentile") <= 0.50, "Medium Risk")    # Next 30%
+         .otherwise("Low Risk")                                     # Bottom 50%
+    )
 
 **Why Percentile-Based Risk Categories?**
 - **Adaptive:** Always identifies top 20% as high risk, regardless of absolute probability
 - **Business-friendly:** Easy to explain ("focus on top 20% riskiest customers")
 - **Consistent:** Same proportion of high-risk customers each period
 - **Actionable:** Resources allocated based on relative risk, not arbitrary thresholds
+
+### Model Persistence
+
+    # Save predictions to Gold layer
+    predictions_final = predictions.select(
+        "customer_unique_id",
+        F.col("is_churned").cast("int").alias("is_churned"),
+        "churn_probability",
+        "churn_risk_category",
+        "predicted_churn"
+    )
+
+    predictions_final.write \
+        .format("delta") \
+        .mode("overwrite") \
+        .option("overwriteSchema", "true") \
+        .saveAsTable("workspace.default.gold_customer_churn_predictions")
 
 ### Business Impact Analysis
 
@@ -535,25 +473,19 @@ predictions = predictions.withColumn(
 - Average customer CLV: R$ 1,917 (from your Gold layer)
 
 **Scenario 1: Target High-Risk Only (Smart Targeting)**
-```
-Cost: 19,200 customers × R$ 50 = R$ 960,000
-Potential saves: 19,200 × 30% × R$ 1,917 = R$ 11,034,240
-ROI: 1,049% 🎯
-```
+    Cost: 19,200 customers × R$ 50 = R$ 960,000
+    Potential saves: 19,200 × 30% × R$ 1,917 = R$ 11,034,240
+    ROI: 1,049% 🎯
 
 **Scenario 2: Target High + Medium Risk**
-```
-Cost: 48,000 customers × R$ 50 = R$ 2,400,000
-Potential saves: 48,000 × 30% × R$ 1,917 = R$ 27,604,800
-ROI: 1,050% 🎯
-```
+    Cost: 48,000 customers × R$ 50 = R$ 2,400,000
+    Potential saves: 48,000 × 30% × R$ 1,917 = R$ 27,604,800
+    ROI: 1,050% 🎯
 
 **Scenario 3: No Model - Contact Everyone with recency > 180**
-```
-Cost: 57,000 × R$ 50 = R$ 2,850,000
-Wastes effort on misclassified customers
-No risk prioritization
-```
+    Cost: 57,000 × R$ 50 = R$ 2,850,000
+    Wastes effort on misclassified customers
+    No risk prioritization
 
 **Conclusion:** ML model enables precise targeting with massive ROI. Even with conservative assumptions, the model justifies significant retention investment.
 
@@ -563,65 +495,59 @@ No risk prioritization
 
 ### Model Persistence
 
-```python
-# Save trained model
-model.write().overwrite().save("dbfs:/models/churn_prediction_v1")
+    # Save trained model
+    model.write().overwrite().save("dbfs:/models/churn_prediction_v1")
 
-# Load in production
-from pyspark.ml import PipelineModel
-loaded_model = PipelineModel.load("dbfs:/models/churn_prediction_v1")
-```
+    # Load in production
+    from pyspark.ml import PipelineModel
+    loaded_model = PipelineModel.load("dbfs:/models/churn_prediction_v1")
 
 ### Batch Scoring Pipeline
 
-```python
-# Score all customers daily
-def score_customers():
-    # Load latest customer data
-    customers = spark.table("gold_customer_metrics")
-    
-    # Load model
-    model = PipelineModel.load("dbfs:/models/churn_prediction_v1")
-    
-    # Make predictions
-    predictions = model.transform(customers)
-    
-    # Extract key fields
-    results = predictions.select(
-        "customer_unique_id",
-        "is_churned",
-        "churn_probability",
-        "churn_risk_category",
-        "prediction"
-    )
-    
-    # Save to Gold layer
-    results.write \
-        .format("delta") \
-        .mode("overwrite") \
-        .saveAsTable("gold_customer_churn_predictions")
-    
-    print(f"✅ Scored {results.count():,} customers")
+    # Score all customers daily
+    def score_customers():
+        # Load latest customer data
+        customers = spark.table("gold_customer_metrics")
+        
+        # Load model
+        model = PipelineModel.load("dbfs:/models/churn_prediction_v1")
+        
+        # Make predictions
+        predictions = model.transform(customers)
+        
+        # Extract key fields
+        results = predictions.select(
+            "customer_unique_id",
+            "is_churned",
+            "churn_probability",
+            "churn_risk_category",
+            "prediction"
+        )
+        
+        # Save to Gold layer
+        results.write \
+            .format("delta") \
+            .mode("overwrite") \
+            .saveAsTable("gold_customer_churn_predictions")
+        
+        print(f"✅ Scored {results.count():,} customers")
 
-# Schedule daily at 2 AM
-```
+    # Schedule daily at 2 AM
 
 ### Real-Time Scoring (Optional)
 
-```python
-# For single customer prediction
-def predict_churn(customer_id):
-    customer_data = spark.table("gold_customer_metrics") \
-        .filter(F.col("customer_unique_id") == customer_id)
-    
-    prediction = model.transform(customer_data)
-    
-    return {
-        "customer_id": customer_id,
-        "churn_probability": prediction.select("churn_probability").first()[0],
-        "risk_category": prediction.select("churn_risk_category").first()[0]
-    }
-```
+    # For single customer prediction
+    def predict_churn(customer_id):
+        customer_data = spark.table("gold_customer_metrics") \
+            .filter(F.col("customer_unique_id") == customer_id)
+        
+        prediction = model.transform(customer_data)
+        
+        return {
+            "customer_id": customer_id,
+            "churn_probability": prediction.select("churn_probability").first()[0],
+            "risk_category": prediction.select("churn_risk_category").first()[0]
+        }
 
 ---
 
@@ -629,40 +555,36 @@ def predict_churn(customer_id):
 
 ### Data Drift Detection
 
-```python
-# Compare training vs. production feature distributions
-def check_data_drift():
-    train_stats = train_data.select(features_for_model).describe()
-    prod_stats = spark.table("gold_customer_metrics").select(features_for_model).describe()
-    
-    # Alert if mean shifts > 20%
-    for feature in features_for_model:
-        train_mean = float(train_stats.filter("summary = 'mean'").select(feature).first()[0])
-        prod_mean = float(prod_stats.filter("summary = 'mean'").select(feature).first()[0])
+    # Compare training vs. production feature distributions
+    def check_data_drift():
+        train_stats = train_data.select(features_for_model).describe()
+        prod_stats = spark.table("gold_customer_metrics").select(features_for_model).describe()
         
-        drift = abs(prod_mean - train_mean) / train_mean
-        if drift > 0.2:
-            print(f"⚠️ Drift detected in {feature}: {drift:.1%}")
-```
+        # Alert if mean shifts > 20%
+        for feature in features_for_model:
+            train_mean = float(train_stats.filter("summary = 'mean'").select(feature).first()[0])
+            prod_mean = float(prod_stats.filter("summary = 'mean'").select(feature).first()[0])
+            
+            drift = abs(prod_mean - train_mean) / train_mean
+            if drift > 0.2:
+                print(f"⚠️ Drift detected in {feature}: {drift:.1%}")
 
 ### Model Performance Monitoring
 
-```python
-# Track model performance over time
-def monitor_model():
-    predictions = spark.table("gold_customer_churn_predictions")
-    
-    # Calculate metrics
-    metrics = {
-        "date": datetime.now(),
-        "total_customers": predictions.count(),
-        "high_risk_count": predictions.filter("churn_risk_category = 'High Risk'").count(),
-        "avg_churn_probability": predictions.agg(F.avg("churn_probability")).first()[0]
-    }
-    
-    # Log to monitoring table
-    log_metrics(metrics)
-```
+    # Track model performance over time
+    def monitor_model():
+        predictions = spark.table("gold_customer_churn_predictions")
+        
+        # Calculate metrics
+        metrics = {
+            "date": datetime.now(),
+            "total_customers": predictions.count(),
+            "high_risk_count": predictions.filter("churn_risk_category = 'High Risk'").count(),
+            "avg_churn_probability": predictions.agg(F.avg("churn_probability")).first()[0]
+        }
+        
+        # Log to monitoring table
+        log_metrics(metrics)
 
 ### Retraining Schedule
 
@@ -689,23 +611,23 @@ def monitor_model():
    - Built-in feature importance
 
 3. **Business-first approach**
-   - Defined churn with business input (90 days)
+   - Defined churn with business input (180 days)
    - Optimized for actionability, not just accuracy
    - Cost-benefit analysis justified deployment
 
 ### Challenges & Solutions
 
-**Challenge 1: Class imbalance (18% churn)**
-- **Solution:** Stratified sampling, precision-focused metrics
+**Challenge 1: Class imbalance (59.7% churn)**
+- **Solution:** Used 180-day threshold for better balance
 - **Alternative considered:** SMOTE (decided against - creates synthetic data)
 
 **Challenge 2: Feature selection**
 - **Solution:** Started with domain knowledge (RFM), added iteratively
 - **Alternative:** Could automate with feature selection algorithms
 
-**Challenge 3: Choosing churn threshold**
-- **Solution:** Tested 60, 90, 120 days - 90 balanced precision/recall
-- **Alternative:** Could make threshold dynamic per segment
+**Challenge 3: Model interpretability**
+- **Solution:** Percentile-based risk categories for business use
+- **Alternative:** SHAP values for individual feature contributions
 
 ### Improvements for V2
 
