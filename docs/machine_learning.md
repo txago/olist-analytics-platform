@@ -80,7 +80,7 @@ Your data reveals a harsh truth - average frequency = 1.0 across ALL segments. T
 ### Feature Engineering
 
 #### Selected Features (RFM Only)
-```
+```python
 features = [
     "recency_days",      # Days since last purchase (lower = better)
     "frequency",         # Number of orders (higher = better)
@@ -96,7 +96,7 @@ features = [
 - **Model efficiency:** Fewer features = faster training and easier interpretation
 
 #### Feature Scaling
-```
+```python
 from pyspark.ml.feature import VectorAssembler, StandardScaler
 
 # Combine features into vector
@@ -129,7 +129,7 @@ scaler = StandardScaler(
 ### Model Training
 
 #### Data Sampling for Efficiency
-```
+```python
 # Sample data to reduce model size
 ml_data_sampled = ml_data.sample(
     fraction=0.1,
@@ -156,7 +156,7 @@ ml_data_sampled = ml_data.sample(
 - Model size stays manageable (important for production deployment)
 
 #### Training Code
-```
+```python
 from pyspark.ml.clustering import KMeans
 from pyspark.ml import Pipeline
 
@@ -192,7 +192,7 @@ predictions = model.transform(ml_data)
 ### Segment Analysis
 
 #### Segment Profiles
-```
+```python
 segment_analysis = predictions.groupBy("ml_segment").agg(
     F.count("*").alias("customer_count"),
     F.avg("recency_days").alias("avg_recency"),
@@ -235,7 +235,7 @@ segment_analysis = predictions.groupBy("ml_segment").agg(
 The RFM segments are more practical for business use, while ML segments validate that natural customer clusters exist in the data.
 
 ### Model Persistence
-```
+```python
 # Save predictions to Gold layer
 predictions.select(
     "customer_unique_id",
@@ -268,7 +268,7 @@ predictions.select(
 ### Target Variable Definition
 
 #### What is "Churn"?
-```
+```python
 # Define churn threshold
 CHURN_THRESHOLD = 180  # days (6 months)
 
@@ -293,7 +293,7 @@ customer_data = customer_data.withColumn(
 ### Feature Engineering
 
 #### Selected Features
-```
+```python
 features_for_model = [
     "recency_days",              # Primary churn indicator
     "frequency",                 # Loyalty proxy
@@ -318,7 +318,7 @@ features_for_model = [
 | `monetary_value` | Investment in platform | ⬆️ = ⬇️ churn |
 
 #### Data Preparation
-```
+```python
 # Prepare training data (remove nulls and cast to double)
 ml_data = customer_data.select(
     "customer_unique_id",
@@ -328,7 +328,7 @@ ml_data = customer_data.select(
 ```
 
 ### Train-Test Split
-```
+```python
 # Split data (80% train, 20% test)
 train_data, test_data = ml_data.randomSplit([0.8, 0.2], seed=42)
 
@@ -339,7 +339,7 @@ print(f"Test set: {test_data.count():,} customers")
 ### Model Training
 
 #### Hyperparameters
-```
+```python
 from pyspark.ml.classification import RandomForestClassifier
 
 rf = RandomForestClassifier(
@@ -361,7 +361,7 @@ rf = RandomForestClassifier(
 - **Simplified model:** Faster training, smaller model size, easier deployment
 
 #### Training Pipeline
-```
+```python
 # Feature assembly + scaling + model
 assembler = VectorAssembler(inputCols=features_for_model, outputCol="features_raw")
 scaler = StandardScaler(inputCol="features_raw", outputCol="features")
@@ -382,7 +382,7 @@ model = pipeline.fit(train_data)
 ### Model Evaluation
 
 #### AUC-ROC Performance
-```
+```python
 from pyspark.ml.evaluation import BinaryClassificationEvaluator
 
 evaluator = BinaryClassificationEvaluator(
@@ -410,7 +410,7 @@ This isn't "too good to be true" - it's expected for your historical dataset:
 **In Production:** AUC would be lower (75-85%) when predicting *future* churn on live data, but for historical validation, 99.8% shows the model logic is sound.
 
 ### Churn Probability Calibration
-```
+```python
 # Extract probability using UDF
 @F.udf("double")
 def extract_probability(probability):
@@ -456,7 +456,7 @@ predictions = predictions.withColumn(
 - **Actionable:** Resources allocated based on relative risk, not arbitrary thresholds
 
 ### Model Persistence
-```
+```python
 # Save predictions to Gold layer
 predictions_final = predictions.select(
     "customer_unique_id",
@@ -509,7 +509,7 @@ predictions_final.write \
 ## Production Deployment
 
 ### Model Persistence
-```
+```python
 # Save trained model
 model.write().overwrite().save("dbfs:/models/churn_prediction_v1")
 
@@ -519,7 +519,7 @@ loaded_model = PipelineModel.load("dbfs:/models/churn_prediction_v1")
 ```
 
 ### Batch Scoring Pipeline
-```
+```python
 # Score all customers daily
 def score_customers():
     # Load latest customer data
@@ -551,7 +551,7 @@ def score_customers():
 # Schedule daily at 2 AM
 ```
 ### Real-Time Scoring (Optional)
-```
+```python
 # For single customer prediction
 def predict_churn(customer_id):
     customer_data = spark.table("gold_customer_metrics") \
@@ -571,7 +571,7 @@ def predict_churn(customer_id):
 ## Model Monitoring & Maintenance
 
 ### Data Drift Detection
-```
+```python
 # Compare training vs. production feature distributions
 def check_data_drift():
     train_stats = train_data.select(features_for_model).describe()
@@ -587,7 +587,7 @@ def check_data_drift():
             print(f"⚠️ Drift detected in {feature}: {drift:.1%}")
 ```
 ### Model Performance Monitoring
-```
+```python
 # Track model performance over time
 def monitor_model():
     predictions = spark.table("gold_customer_churn_predictions")
