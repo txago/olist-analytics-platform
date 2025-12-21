@@ -80,12 +80,13 @@ Your data reveals a harsh truth - average frequency = 1.0 across ALL segments. T
 ### Feature Engineering
 
 #### Selected Features (RFM Only)
-
-    features = [
-        "recency_days",      # Days since last purchase (lower = better)
-        "frequency",         # Number of orders (higher = better)
-        "monetary_value"     # Total spend (higher = better)
-    ]
+```
+features = [
+    "recency_days",      # Days since last purchase (lower = better)
+    "frequency",         # Number of orders (higher = better)
+    "monetary_value"     # Total spend (higher = better)
+]
+```
 
 **Why These Features?**
 - **Classic RFM:** Industry-standard for customer segmentation
@@ -95,22 +96,23 @@ Your data reveals a harsh truth - average frequency = 1.0 across ALL segments. T
 - **Model efficiency:** Fewer features = faster training and easier interpretation
 
 #### Feature Scaling
+```
+from pyspark.ml.feature import VectorAssembler, StandardScaler
 
-    from pyspark.ml.feature import VectorAssembler, StandardScaler
+# Combine features into vector
+assembler = VectorAssembler(
+    inputCols=features,
+    outputCol="features_raw"
+)
 
-    # Combine features into vector
-    assembler = VectorAssembler(
-        inputCols=features,
-        outputCol="features_raw"
-    )
-
-    # Standardize (mean=0, std=1)
-    scaler = StandardScaler(
-        inputCol="features_raw",
-        outputCol="features",
-        withStd=True,
-        withMean=True
-    )
+# Standardize (mean=0, std=1)
+scaler = StandardScaler(
+    inputCol="features_raw",
+    outputCol="features",
+    withStd=True,
+    withMean=True
+)
+```
 
 **Why StandardScaler?**
 - Monetary values in thousands (R$ 1,000+)
@@ -127,12 +129,13 @@ Your data reveals a harsh truth - average frequency = 1.0 across ALL segments. T
 ### Model Training
 
 #### Data Sampling for Efficiency
-
-    # Sample data to reduce model size
-    ml_data_sampled = ml_data.sample(
-        fraction=0.1,
-        seed=42
-    )
+```
+# Sample data to reduce model size
+ml_data_sampled = ml_data.sample(
+    fraction=0.1,
+    seed=42
+)
+```
 
 **Why Sample?**
 - Training on 10% (9,600 customers) is sufficient for clustering
@@ -153,31 +156,32 @@ Your data reveals a harsh truth - average frequency = 1.0 across ALL segments. T
 - Model size stays manageable (important for production deployment)
 
 #### Training Code
+```
+from pyspark.ml.clustering import KMeans
+from pyspark.ml import Pipeline
 
-    from pyspark.ml.clustering import KMeans
-    from pyspark.ml import Pipeline
+# Define model
+kmeans = KMeans(
+    k=3,                      # 3 segments based on business needs
+    seed=42,                  # Reproducibility
+    featuresCol="features",
+    predictionCol="ml_segment"
+)
 
-    # Define model
-    kmeans = KMeans(
-        k=3,                      # 3 segments based on business needs
-        seed=42,                  # Reproducibility
-        featuresCol="features",
-        predictionCol="ml_segment"
-    )
+# Create pipeline
+pipeline = Pipeline(stages=[
+    assembler,  # Combine features
+    scaler,     # Standardize
+    kmeans      # Cluster
+])
 
-    # Create pipeline
-    pipeline = Pipeline(stages=[
-        assembler,  # Combine features
-        scaler,     # Standardize
-        kmeans      # Cluster
-    ])
+# Train model
+print(f"Training on {ml_data_sampled.count()} customers (sampled)")
+model = pipeline.fit(ml_data_sampled)
 
-    # Train model
-    print(f"Training on {ml_data_sampled.count()} customers (sampled)")
-    model = pipeline.fit(ml_data_sampled)
-
-    # Make predictions on full dataset
-    predictions = model.transform(ml_data)
+# Make predictions on full dataset
+predictions = model.transform(ml_data)
+```
 
 **Training Performance:**
 - **Full data size:** 96,096 customers
@@ -188,13 +192,14 @@ Your data reveals a harsh truth - average frequency = 1.0 across ALL segments. T
 ### Segment Analysis
 
 #### Segment Profiles
-
-    segment_analysis = predictions.groupBy("ml_segment").agg(
-        F.count("*").alias("customer_count"),
-        F.avg("recency_days").alias("avg_recency"),
-        F.avg("frequency").alias("avg_frequency"),
-        F.avg("monetary_value").alias("avg_monetary")
-    ).orderBy("ml_segment")
+```
+segment_analysis = predictions.groupBy("ml_segment").agg(
+    F.count("*").alias("customer_count"),
+    F.avg("recency_days").alias("avg_recency"),
+    F.avg("frequency").alias("avg_frequency"),
+    F.avg("monetary_value").alias("avg_monetary")
+).orderBy("ml_segment")
+```
 
 **Results (3 ML Segments):**
 
@@ -230,12 +235,13 @@ Your data reveals a harsh truth - average frequency = 1.0 across ALL segments. T
 The RFM segments are more practical for business use, while ML segments validate that natural customer clusters exist in the data.
 
 ### Model Persistence
-
-    # Save predictions to Gold layer
-    predictions.select(
-        "customer_unique_id",
-        "ml_segment"
-    ).write.format("delta").mode("overwrite").saveAsTable("gold_customer_segments_ml")
+```
+# Save predictions to Gold layer
+predictions.select(
+    "customer_unique_id",
+    "ml_segment"
+).write.format("delta").mode("overwrite").saveAsTable("gold_customer_segments_ml")
+```
 
 ---
 
@@ -262,15 +268,16 @@ The RFM segments are more practical for business use, while ML segments validate
 ### Target Variable Definition
 
 #### What is "Churn"?
+```
+# Define churn threshold
+CHURN_THRESHOLD = 180  # days (6 months)
 
-    # Define churn threshold
-    CHURN_THRESHOLD = 180  # days (6 months)
-
-    # Create binary target
-    customer_data = customer_data.withColumn(
-        "is_churned",
-        F.when(F.col("recency_days") > CHURN_THRESHOLD, 1).otherwise(0)
-    )
+# Create binary target
+customer_data = customer_data.withColumn(
+    "is_churned",
+    F.when(F.col("recency_days") > CHURN_THRESHOLD, 1).otherwise(0)
+)
+```
 
 **Why 180 days?**
 - E-commerce customers typically repurchase every 2-4 months
@@ -286,18 +293,19 @@ The RFM segments are more practical for business use, while ML segments validate
 ### Feature Engineering
 
 #### Selected Features
-
-    features_for_model = [
-        "recency_days",              # Primary churn indicator
-        "frequency",                 # Loyalty proxy
-        "monetary_value",            # Customer value
-        "avg_order_value",           # Purchase behavior
-        "avg_delivery_days",         # Experience quality
-        "avg_delivery_delay",        # Fulfillment issues
-        "avg_review_score",          # Satisfaction
-        "customer_lifetime_days",    # Tenure
-        "total_items_purchased"      # Engagement level
-    ]
+```
+features_for_model = [
+    "recency_days",              # Primary churn indicator
+    "frequency",                 # Loyalty proxy
+    "monetary_value",            # Customer value
+    "avg_order_value",           # Purchase behavior
+    "avg_delivery_days",         # Experience quality
+    "avg_delivery_delay",        # Fulfillment issues
+    "avg_review_score",          # Satisfaction
+    "customer_lifetime_days",    # Tenure
+    "total_items_purchased"      # Engagement level
+]
+```
 
 **Feature Rationale:**
 
@@ -310,39 +318,42 @@ The RFM segments are more practical for business use, while ML segments validate
 | `monetary_value` | Investment in platform | ⬆️ = ⬇️ churn |
 
 #### Data Preparation
-
-    # Prepare training data (remove nulls and cast to double)
-    ml_data = customer_data.select(
-        "customer_unique_id",
-        F.col("is_churned").cast("double").alias("is_churned"),
-        *[F.col(c).cast("double").alias(c) for c in features_for_model]
-    ).na.drop()
+```
+# Prepare training data (remove nulls and cast to double)
+ml_data = customer_data.select(
+    "customer_unique_id",
+    F.col("is_churned").cast("double").alias("is_churned"),
+    *[F.col(c).cast("double").alias(c) for c in features_for_model]
+).na.drop()
+```
 
 ### Train-Test Split
+```
+# Split data (80% train, 20% test)
+train_data, test_data = ml_data.randomSplit([0.8, 0.2], seed=42)
 
-    # Split data (80% train, 20% test)
-    train_data, test_data = ml_data.randomSplit([0.8, 0.2], seed=42)
-
-    print(f"Training set: {train_data.count():,} customers")
-    print(f"Test set: {test_data.count():,} customers")
+print(f"Training set: {train_data.count():,} customers")
+print(f"Test set: {test_data.count():,} customers")
+```
 
 ### Model Training
 
 #### Hyperparameters
+```
+from pyspark.ml.classification import RandomForestClassifier
 
-    from pyspark.ml.classification import RandomForestClassifier
-
-    rf = RandomForestClassifier(
-        labelCol="is_churned",
-        featuresCol="features",
-        
-        # Forest parameters
-        numTrees=10,                 # Smaller forest for faster training
-        maxDepth=5,                  # Prevent overfitting
-        
-        # Reproducibility
-        seed=42
-    )
+rf = RandomForestClassifier(
+    labelCol="is_churned",
+    featuresCol="features",
+    
+    # Forest parameters
+    numTrees=10,                 # Smaller forest for faster training
+    maxDepth=5,                  # Prevent overfitting
+    
+    # Reproducibility
+    seed=42
+)
+```
 
 **Why These Parameters?**
 - **numTrees=10:** Efficient balance of accuracy and speed (100 trees typically overkill)
@@ -350,16 +361,17 @@ The RFM segments are more practical for business use, while ML segments validate
 - **Simplified model:** Faster training, smaller model size, easier deployment
 
 #### Training Pipeline
+```
+# Feature assembly + scaling + model
+assembler = VectorAssembler(inputCols=features_for_model, outputCol="features_raw")
+scaler = StandardScaler(inputCol="features_raw", outputCol="features")
 
-    # Feature assembly + scaling + model
-    assembler = VectorAssembler(inputCols=features_for_model, outputCol="features_raw")
-    scaler = StandardScaler(inputCol="features_raw", outputCol="features")
+pipeline = Pipeline(stages=[assembler, scaler, rf])
 
-    pipeline = Pipeline(stages=[assembler, scaler, rf])
-
-    # Train
-    print("Training Random Forest model...")
-    model = pipeline.fit(train_data)
+# Train
+print("Training Random Forest model...")
+model = pipeline.fit(train_data)
+```
 
 **Training Performance:**
 - **Training time:** ~2-3 minutes
@@ -370,16 +382,17 @@ The RFM segments are more practical for business use, while ML segments validate
 ### Model Evaluation
 
 #### AUC-ROC Performance
+```
+from pyspark.ml.evaluation import BinaryClassificationEvaluator
 
-    from pyspark.ml.evaluation import BinaryClassificationEvaluator
+evaluator = BinaryClassificationEvaluator(
+    labelCol="is_churned",
+    metricName="areaUnderROC"
+)
 
-    evaluator = BinaryClassificationEvaluator(
-        labelCol="is_churned",
-        metricName="areaUnderROC"
-    )
-
-    auc = evaluator.evaluate(test_predictions)
-    print(f"AUC-ROC: {auc:.3f}")  # 0.998
+auc = evaluator.evaluate(test_predictions)
+print(f"AUC-ROC: {auc:.3f}")  # 0.998
+```
 
 **AUC = 0.998** (Outstanding!)
 - 0.5 = Random guess
@@ -397,43 +410,44 @@ This isn't "too good to be true" - it's expected for your historical dataset:
 **In Production:** AUC would be lower (75-85%) when predicting *future* churn on live data, but for historical validation, 99.8% shows the model logic is sound.
 
 ### Churn Probability Calibration
+```
+# Extract probability using UDF
+@F.udf("double")
+def extract_probability(probability):
+    """Extract probability of positive class (churn=1)"""
+    if probability is not None:
+        return float(probability[1])
+    return 0.0
 
-    # Extract probability using UDF
-    @F.udf("double")
-    def extract_probability(probability):
-        """Extract probability of positive class (churn=1)"""
-        if probability is not None:
-            return float(probability[1])
-        return 0.0
+predictions = predictions.withColumn(
+    "churn_probability",
+    extract_probability(F.col("probability"))
+)
 
-    predictions = predictions.withColumn(
-        "churn_probability",
-        extract_probability(F.col("probability"))
-    )
+# Create predicted churn (50% threshold)
+predictions = predictions.withColumn(
+    "predicted_churn",
+    F.when(F.col("churn_probability") >= 0.5, 1).otherwise(0)
+)
 
-    # Create predicted churn (50% threshold)
-    predictions = predictions.withColumn(
-        "predicted_churn",
-        F.when(F.col("churn_probability") >= 0.5, 1).otherwise(0)
-    )
+# Create risk categories using PERCENTILES (not absolute thresholds)
+from pyspark.sql.functions import percent_rank
+from pyspark.sql.window import Window
 
-    # Create risk categories using PERCENTILES (not absolute thresholds)
-    from pyspark.sql.functions import percent_rank
-    from pyspark.sql.window import Window
+window_spec = Window.orderBy(F.col("churn_probability").desc())
 
-    window_spec = Window.orderBy(F.col("churn_probability").desc())
+predictions = predictions.withColumn(
+    "churn_percentile",
+    percent_rank().over(window_spec)
+)
 
-    predictions = predictions.withColumn(
-        "churn_percentile",
-        percent_rank().over(window_spec)
-    )
-
-    predictions = predictions.withColumn(
-        "churn_risk_category",
-        F.when(F.col("churn_percentile") <= 0.20, "High Risk")      # Top 20%
-         .when(F.col("churn_percentile") <= 0.50, "Medium Risk")    # Next 30%
-         .otherwise("Low Risk")                                     # Bottom 50%
-    )
+predictions = predictions.withColumn(
+    "churn_risk_category",
+    F.when(F.col("churn_percentile") <= 0.20, "High Risk")      # Top 20%
+        .when(F.col("churn_percentile") <= 0.50, "Medium Risk")    # Next 30%
+        .otherwise("Low Risk")                                     # Bottom 50%
+)
+```
 
 **Why Percentile-Based Risk Categories?**
 - **Adaptive:** Always identifies top 20% as high risk, regardless of absolute probability
@@ -442,21 +456,22 @@ This isn't "too good to be true" - it's expected for your historical dataset:
 - **Actionable:** Resources allocated based on relative risk, not arbitrary thresholds
 
 ### Model Persistence
+```
+# Save predictions to Gold layer
+predictions_final = predictions.select(
+    "customer_unique_id",
+    F.col("is_churned").cast("int").alias("is_churned"),
+    "churn_probability",
+    "churn_risk_category",
+    "predicted_churn"
+)
 
-    # Save predictions to Gold layer
-    predictions_final = predictions.select(
-        "customer_unique_id",
-        F.col("is_churned").cast("int").alias("is_churned"),
-        "churn_probability",
-        "churn_risk_category",
-        "predicted_churn"
-    )
-
-    predictions_final.write \
-        .format("delta") \
-        .mode("overwrite") \
-        .option("overwriteSchema", "true") \
-        .saveAsTable("workspace.default.gold_customer_churn_predictions")
+predictions_final.write \
+    .format("delta") \
+    .mode("overwrite") \
+    .option("overwriteSchema", "true") \
+    .saveAsTable("workspace.default.gold_customer_churn_predictions")
+```
 
 ### Business Impact Analysis
 
@@ -494,98 +509,100 @@ This isn't "too good to be true" - it's expected for your historical dataset:
 ## Production Deployment
 
 ### Model Persistence
+```
+# Save trained model
+model.write().overwrite().save("dbfs:/models/churn_prediction_v1")
 
-    # Save trained model
-    model.write().overwrite().save("dbfs:/models/churn_prediction_v1")
-
-    # Load in production
-    from pyspark.ml import PipelineModel
-    loaded_model = PipelineModel.load("dbfs:/models/churn_prediction_v1")
+# Load in production
+from pyspark.ml import PipelineModel
+loaded_model = PipelineModel.load("dbfs:/models/churn_prediction_v1")
+```
 
 ### Batch Scoring Pipeline
+```
+# Score all customers daily
+def score_customers():
+    # Load latest customer data
+    customers = spark.table("gold_customer_metrics")
+    
+    # Load model
+    model = PipelineModel.load("dbfs:/models/churn_prediction_v1")
+    
+    # Make predictions
+    predictions = model.transform(customers)
+    
+    # Extract key fields
+    results = predictions.select(
+        "customer_unique_id",
+        "is_churned",
+        "churn_probability",
+        "churn_risk_category",
+        "prediction"
+    )
+    
+    # Save to Gold layer
+    results.write \
+        .format("delta") \
+        .mode("overwrite") \
+        .saveAsTable("gold_customer_churn_predictions")
+    
+    print(f"✅ Scored {results.count():,} customers")
 
-    # Score all customers daily
-    def score_customers():
-        # Load latest customer data
-        customers = spark.table("gold_customer_metrics")
-        
-        # Load model
-        model = PipelineModel.load("dbfs:/models/churn_prediction_v1")
-        
-        # Make predictions
-        predictions = model.transform(customers)
-        
-        # Extract key fields
-        results = predictions.select(
-            "customer_unique_id",
-            "is_churned",
-            "churn_probability",
-            "churn_risk_category",
-            "prediction"
-        )
-        
-        # Save to Gold layer
-        results.write \
-            .format("delta") \
-            .mode("overwrite") \
-            .saveAsTable("gold_customer_churn_predictions")
-        
-        print(f"✅ Scored {results.count():,} customers")
-
-    # Schedule daily at 2 AM
-
+# Schedule daily at 2 AM
+```
 ### Real-Time Scoring (Optional)
-
-    # For single customer prediction
-    def predict_churn(customer_id):
-        customer_data = spark.table("gold_customer_metrics") \
-            .filter(F.col("customer_unique_id") == customer_id)
-        
-        prediction = model.transform(customer_data)
-        
-        return {
-            "customer_id": customer_id,
-            "churn_probability": prediction.select("churn_probability").first()[0],
-            "risk_category": prediction.select("churn_risk_category").first()[0]
-        }
+```
+# For single customer prediction
+def predict_churn(customer_id):
+    customer_data = spark.table("gold_customer_metrics") \
+        .filter(F.col("customer_unique_id") == customer_id)
+    
+    prediction = model.transform(customer_data)
+    
+    return {
+        "customer_id": customer_id,
+        "churn_probability": prediction.select("churn_probability").first()[0],
+        "risk_category": prediction.select("churn_risk_category").first()[0]
+    }
+```
 
 ---
 
 ## Model Monitoring & Maintenance
 
 ### Data Drift Detection
-
-    # Compare training vs. production feature distributions
-    def check_data_drift():
-        train_stats = train_data.select(features_for_model).describe()
-        prod_stats = spark.table("gold_customer_metrics").select(features_for_model).describe()
+```
+# Compare training vs. production feature distributions
+def check_data_drift():
+    train_stats = train_data.select(features_for_model).describe()
+    prod_stats = spark.table("gold_customer_metrics").select(features_for_model).describe()
+    
+    # Alert if mean shifts > 20%
+    for feature in features_for_model:
+        train_mean = float(train_stats.filter("summary = 'mean'").select(feature).first()[0])
+        prod_mean = float(prod_stats.filter("summary = 'mean'").select(feature).first()[0])
         
-        # Alert if mean shifts > 20%
-        for feature in features_for_model:
-            train_mean = float(train_stats.filter("summary = 'mean'").select(feature).first()[0])
-            prod_mean = float(prod_stats.filter("summary = 'mean'").select(feature).first()[0])
-            
-            drift = abs(prod_mean - train_mean) / train_mean
-            if drift > 0.2:
-                print(f"⚠️ Drift detected in {feature}: {drift:.1%}")
-
+        drift = abs(prod_mean - train_mean) / train_mean
+        if drift > 0.2:
+            print(f"⚠️ Drift detected in {feature}: {drift:.1%}")
+```
 ### Model Performance Monitoring
-
-    # Track model performance over time
-    def monitor_model():
-        predictions = spark.table("gold_customer_churn_predictions")
-        
-        # Calculate metrics
-        metrics = {
-            "date": datetime.now(),
-            "total_customers": predictions.count(),
-            "high_risk_count": predictions.filter("churn_risk_category = 'High Risk'").count(),
-            "avg_churn_probability": predictions.agg(F.avg("churn_probability")).first()[0]
-        }
-        
-        # Log to monitoring table
-        log_metrics(metrics)
-
+```
+# Track model performance over time
+def monitor_model():
+    predictions = spark.table("gold_customer_churn_predictions")
+    
+    # Calculate metrics
+    metrics = {
+        "date": datetime.now(),
+        "total_customers": predictions.count(),
+        "high_risk_count": predictions.filter("churn_risk_category = 'High Risk'").count(),
+        "avg_churn_probability": predictions.agg(F.avg("churn_probability")).first()[0]
+    }
+    
+    # Log to monitoring table
+    log_metrics(metrics)
+```
 ### Retraining Schedule
 
 **When to retrain:**
