@@ -49,7 +49,7 @@ A comprehensive data analytics platform built on **Databricks** that transforms 
 flowchart TD
     A["🗂️ DATA SOURCE<br><strong>Brazilian E-Commerce Public Dataset by Olist (Kaggle)</strong><br>9 CSV files | 100K orders | 2016-2018"] -->|Databricks Medallion Architecture| B["🥉 BRONZE LAYER<br><strong>Raw Data</strong><br>9 Tables | Delta | Governed"]
     B --> C["🥈 SILVER LAYER<br><strong>Cleaned + Validated</strong><br>5 Tables | Joined | Enriched"]
-    C --> D["🥇 GOLD LAYER<br><strong>Business Metrics</strong><br>8 Tables | RFM | CLV | ML Scores"]
+    C --> D["🥇 GOLD LAYER<br><strong>Business Metrics</strong><br>7 Tables | RFM | CLV | ML Scores"]
     D --> E["🤖 ML MODELS<br>Segmentation | Churn Prediction"]
     D --> F["🔍 SQL QUERIES<br>7 reports"]
     D --> G["📊 POWER BI<br>Dashboard | 4 pages"]
