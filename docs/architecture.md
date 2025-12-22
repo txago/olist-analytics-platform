@@ -284,7 +284,7 @@ Catalog: workspace
 │   ├── Volume: olist_data (CSV files)
 │   ├── Bronze Tables (9)
 │   ├── Silver Tables (5)
-│   └── Gold Tables (8)
+│   └── Gold Tables (7)
 ```
 
 **Benefits:**

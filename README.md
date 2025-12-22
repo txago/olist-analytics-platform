@@ -51,7 +51,7 @@ flowchart TD
     B --> C["🥈 SILVER LAYER<br><strong>Cleaned + Validated</strong><br>5 Tables | Joined | Enriched"]
     C --> D["🥇 GOLD LAYER<br><strong>Business Metrics</strong><br>8 Tables | RFM | CLV | ML Scores"]
     D --> E["🤖 ML MODELS<br>Segmentation | Churn Prediction"]
-    D --> F["🔍 SQL QUERIES<br>8 reports"]
+    D --> F["🔍 SQL QUERIES<br>7 reports"]
     D --> G["📊 POWER BI<br>Dashboard | 4 pages"]
 ```
 
